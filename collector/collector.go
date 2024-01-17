@@ -19,6 +19,7 @@ type KafkaExporterOption struct {
 
 type HostConfig struct {
 	Host       string    `yaml:"host"`
+	Ip         string    `yaml:"ip"`
 	Port       string    `yaml:"port"`
 	User       string    `yaml:"user"`
 	Password   string    `yaml:"password"`
@@ -52,6 +53,9 @@ func LoadConfig(config_file string) {
 		if host.Port == "" {
 			host.Port = "22"
 		}
+		if host.Ip == "" {
+			host.Ip = host.Host
+		}
 		host.Password, _ = Decrypt(host.Password)
 		host.Passphrase, _ = Decrypt(host.Passphrase)
 		HostMap[host.Host] = host
@@ -72,6 +76,7 @@ func Collect(targetHost string, exporter string) string {
 }
 
 func CollectKafkaMetrics(targetHost string) string {
+	output := make(chan string)
 	kafkaExporterOption := GetConfig(targetHost).Exporter.KafkaExporter
 	if len(kafkaExporterOption.KafkaServer) == 0 {
 		slog.Error("kafka: client has run out of available brokers")
@@ -85,5 +90,6 @@ func CollectKafkaMetrics(targetHost string) string {
 		kafkaExporterOption.Port = "9308"
 	}
 	command := fmt.Sprintf("(.promethues_exporter/kafka_exporter --web.listen-address=:%[2]s %[1]s > /dev/null 2>&1 & sleep 3; curl -s http://localhost:%[2]s/metrics) && pkill kafka_exporter", kafkaServers, kafkaExporterOption.Port)
-	return CollectBySsh(targetHost, command)
+	go CollectBySsh(targetHost, command, output)
+	return <-output
 }

@@ -8,42 +8,47 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func CollectBySsh(hostName string, command string) string {
+func CollectBySsh(hostName string, command string, output chan string) {
 	targetHost := GetConfig(hostName)
 	jumpHost := GetConfig(targetHost.Proxy)
 	if jumpHost.Proxy != "" {
-		return SshMultiJump(hostName, command)
+		output <- SshMultiJump(hostName, command)
 	} else if targetHost.Proxy != "" {
-		return SshSingleJump(hostName, command)
+		output <- SshSingleJump(hostName, command)
 	} else {
-		return Ssh(hostName, command)
+		output <- Ssh(hostName, command)
 	}
 }
 
 func GetSshConfig(hostConfig HostConfig) *ssh.ClientConfig {
-	jumpPrivateKeyBytes, err := os.ReadFile(hostConfig.Key)
-	if err != nil {
-		slog.Error("Failed to read private key file: %v", err)
-		return nil
-	}
-
+	var jumpPrivateKeyBytes []byte
+	var err error
 	var jumpPrivateKey ssh.Signer
-	if hostConfig.Passphrase != "" {
-		jumpPrivateKey, err = ssh.ParsePrivateKeyWithPassphrase(jumpPrivateKeyBytes, []byte(hostConfig.Passphrase))
+
+	if hostConfig.Key != "" {
+		jumpPrivateKeyBytes, err = os.ReadFile(hostConfig.Key)
 		if err != nil {
-			slog.Error("Failed to parse private key: %v", err)
+			slog.Error("Failed to read private key file: %v", err)
 			return nil
 		}
-	} else {
-		jumpPrivateKey, err = ssh.ParsePrivateKey(jumpPrivateKeyBytes)
-		if err != nil {
-			slog.Error("private key error: %v", err)
-			return nil
+
+		if hostConfig.Passphrase != "" {
+			jumpPrivateKey, err = ssh.ParsePrivateKeyWithPassphrase(jumpPrivateKeyBytes, []byte(hostConfig.Passphrase))
+			if err != nil {
+				slog.Error("Failed to parse private key: %v", err)
+				return nil
+			}
+		} else {
+			jumpPrivateKey, err = ssh.ParsePrivateKey(jumpPrivateKeyBytes)
+			if err != nil {
+				slog.Error("private key error: %v", err)
+				return nil
+			}
 		}
 	}
 
 	// Set up SSH client configuration for the jump host.
-	return &ssh.ClientConfig{
+	sshConfig := &ssh.ClientConfig{
 		User: hostConfig.User,
 		Auth: []ssh.AuthMethod{
 			ssh.Password(hostConfig.Password),
@@ -51,6 +56,8 @@ func GetSshConfig(hostConfig HostConfig) *ssh.ClientConfig {
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
+	sshConfig.SetDefaults()
+	return sshConfig
 }
 
 func Ssh(hostName string, command string) string {
@@ -58,7 +65,7 @@ func Ssh(hostName string, command string) string {
 	targetConfig := GetSshConfig(targetHost)
 
 	// Establish a connection to the host.
-	targetConn, err := ssh.Dial("tcp", fmt.Sprintf("%s:%s", targetHost.Host, targetHost.Port), targetConfig)
+	targetConn, err := ssh.Dial("tcp", fmt.Sprintf("%s:%s", targetHost.Ip, targetHost.Port), targetConfig)
 	if err != nil {
 		slog.Error("Failed to connect to target host: %v", err)
 		return "# " + err.Error()
@@ -90,7 +97,7 @@ func SshSingleJump(hostName string, command string) string {
 	targetConfig := GetSshConfig(targetHost)
 
 	// Establish a connection to the jump host.
-	jumpConn, err := ssh.Dial("tcp", fmt.Sprintf("%s:%s", jumpHost.Host, jumpHost.Port), jumpConfig)
+	jumpConn, err := ssh.Dial("tcp", fmt.Sprintf("%s:%s", jumpHost.Ip, jumpHost.Port), jumpConfig)
 	if err != nil {
 		slog.Error("Failed to connect to jump host: %v", err)
 		return "# " + err.Error()
@@ -98,14 +105,14 @@ func SshSingleJump(hostName string, command string) string {
 	defer jumpConn.Close()
 
 	// Establish a nested SSH connection to the target host through the jump host.
-	targetConn, err := jumpConn.Dial("tcp", fmt.Sprintf("%s:%s", targetHost.Host, targetHost.Port))
+	targetConn, err := jumpConn.Dial("tcp", fmt.Sprintf("%s:%s", targetHost.Ip, targetHost.Port))
 	if err != nil {
 		slog.Error("Failed to establish a nested connection to the target host: %v", err)
 		return "# " + err.Error()
 	}
 	defer targetConn.Close()
 
-	ncc, chans, reqs, err := ssh.NewClientConn(targetConn, targetHost.Host, targetConfig)
+	ncc, chans, reqs, err := ssh.NewClientConn(targetConn, targetHost.Ip, targetConfig)
 	if err != nil {
 		slog.Error("Failed to create SSH client connection to the target host: %v", err)
 		return "# " + err.Error()
@@ -142,7 +149,7 @@ func SshMultiJump(hostName string, command string) string {
 	targetConfig := GetSshConfig(targetHost)
 
 	// Establish a connection to the first jump host.
-	jumpConn1, err := ssh.Dial("tcp", fmt.Sprintf("%s:%s", jumpHost1.Host, jumpHost1.Port), jumpConfig1)
+	jumpConn1, err := ssh.Dial("tcp", fmt.Sprintf("%s:%s", jumpHost1.Ip, jumpHost1.Port), jumpConfig1)
 	if err != nil {
 		slog.Error("Failed to connect to jump host 1: %v", err)
 		return "# " + err.Error()
@@ -150,13 +157,13 @@ func SshMultiJump(hostName string, command string) string {
 	defer jumpConn1.Close()
 
 	// Establish a connection to the second jump host.
-	jumpConn2, err := jumpConn1.Dial("tcp", fmt.Sprintf("%s:%s", jumpHost2.Host, jumpHost2.Port))
+	jumpConn2, err := jumpConn1.Dial("tcp", fmt.Sprintf("%s:%s", jumpHost2.Ip, jumpHost2.Port))
 	if err != nil {
 		slog.Error("Failed to connect to jump host 1: %v", err)
 		return "# " + err.Error()
 	}
 	defer jumpConn2.Close()
-	jumpncc2, chans, reqs, err := ssh.NewClientConn(jumpConn2, jumpHost2.Host, jumpConfig2)
+	jumpncc2, chans, reqs, err := ssh.NewClientConn(jumpConn2, jumpHost2.Ip, jumpConfig2)
 	if err != nil {
 		slog.Error("Failed to create SSH client connection to the target host: %v", err)
 		return "# " + err.Error()
@@ -166,14 +173,14 @@ func SshMultiJump(hostName string, command string) string {
 	defer jumpClient2.Close()
 
 	// Establish a nested SSH connection to the target host through the jump host.
-	targetConn, err := jumpClient2.Dial("tcp", fmt.Sprintf("%s:%s", targetHost.Host, targetHost.Port))
+	targetConn, err := jumpClient2.Dial("tcp", fmt.Sprintf("%s:%s", targetHost.Ip, targetHost.Port))
 	if err != nil {
 		slog.Error("Failed to establish a nested connection to the target host: %v", err)
 		return "# " + err.Error()
 	}
 	defer targetConn.Close()
 
-	ncc, chans, reqs, err := ssh.NewClientConn(targetConn, targetHost.Host, targetConfig)
+	ncc, chans, reqs, err := ssh.NewClientConn(targetConn, targetHost.Ip, targetConfig)
 	if err != nil {
 		slog.Error("Failed to create SSH client connection to the target host: %v", err)
 		return "# " + err.Error()
