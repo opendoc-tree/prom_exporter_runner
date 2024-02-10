@@ -32,10 +32,13 @@ func main() {
 	app := fiber.New()
 
 	app.Get("/metrics", func(c *fiber.Ctx) error {
-		targetHost := c.Query("target")
+		target := c.Query("target")
 		exporter := c.Query("exporter")
-		collect := collector.Collect(targetHost, exporter)
-		return c.SendString(collect)
+		collect, err := collector.Collect(target, exporter)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		}
+		return c.SendString(*collect)
 	})
 
 	log.Fatal(app.Listen(web_listen_address))

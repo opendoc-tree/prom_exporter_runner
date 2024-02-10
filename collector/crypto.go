@@ -17,7 +17,7 @@ import (
 )
 
 var secret string
-var secret_file string = "secret"
+var secret_file string = ""
 
 func LoadSecretKey() {
 	file, err := os.ReadFile(secret_file)
