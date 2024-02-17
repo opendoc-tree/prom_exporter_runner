@@ -9,7 +9,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func (target *Target) SshRoute(command *string) (*string, error) {
+func (target *Target) SshRoute(command string) (*string, error) {
 	jumpHostCount := len(target.JumpHosts)
 	switch jumpHostCount {
 	case 1:
@@ -60,7 +60,7 @@ func SshConfig(user string, private_key string, passphrase string, password stri
 	}
 }
 
-func Ssh(target *Target, command *string) (*string, error) {
+func Ssh(target *Target, command string) (*string, error) {
 	var wg sync.WaitGroup
 	var metrics string
 	var sessionErr, commandErr error
@@ -91,7 +91,7 @@ func Ssh(target *Target, command *string) (*string, error) {
 		// Run the command
 		var cmdBuff bytes.Buffer
 		session.Stdout = &cmdBuff
-		commandErr = session.Run(*command)
+		commandErr = session.Run(command)
 		metrics = cmdBuff.String()
 	}(targetConn)
 
@@ -109,7 +109,7 @@ func Ssh(target *Target, command *string) (*string, error) {
 	return &metrics, nil
 }
 
-func SshOneJump(target *Target, command *string) (*string, error) {
+func SshOneJump(target *Target, command string) (*string, error) {
 	var wg sync.WaitGroup
 	var metrics string
 	var sessionErr, commandErr error
@@ -164,7 +164,7 @@ func SshOneJump(target *Target, command *string) (*string, error) {
 		// Run the command
 		var cmdBuff bytes.Buffer
 		session.Stdout = &cmdBuff
-		commandErr = session.Run(*command)
+		commandErr = session.Run(command)
 		metrics = cmdBuff.String()
 	}(targetClient)
 
@@ -182,7 +182,7 @@ func SshOneJump(target *Target, command *string) (*string, error) {
 	return &metrics, nil
 }
 
-func SshTwoJump(target *Target, command *string) (*string, error) {
+func SshTwoJump(target *Target, command string) (*string, error) {
 	var wg sync.WaitGroup
 	var metrics string
 	var sessionErr, commandErr error
@@ -258,7 +258,7 @@ func SshTwoJump(target *Target, command *string) (*string, error) {
 		// Run the command
 		var cmdBuff bytes.Buffer
 		session.Stdout = &cmdBuff
-		commandErr = session.Run(*command)
+		commandErr = session.Run(command)
 		metrics = cmdBuff.String()
 	}(targetClient)
 

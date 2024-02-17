@@ -30,5 +30,5 @@ func CollectKafkaMetrics(target string) (*string, error) {
 	}
 	command := fmt.Sprintf("(.promethues_exporter/kafka_exporter --web.listen-address=:%[2]s %[1]s > /dev/null 2>&1 & sleep 3; curl -s http://localhost:%[2]s/metrics) && pkill kafka_exporter", kafkaServers, kafkaExporterOption.Port)
 	t := TargetMap[target]
-	return t.SshRoute(&command)
+	return t.SshRoute(command)
 }
